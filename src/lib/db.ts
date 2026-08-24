@@ -194,9 +194,59 @@ export async function findActiveAccessTokenByHash(
 
 export function ttlFromEnv(
   env: Env,
-  key: "SESSION_TTL_SECONDS" | "NONCE_TTL_SECONDS" | "TURN_CREDENTIAL_TTL_SECONDS" | "TURN_CREDENTIAL_MAX_TTL_SECONDS",
+  key: "SESSION_TTL_SECONDS" | "NONCE_TTL_SECONDS",
   fallback = 3600,
 ): number {
   const value = Number(env[key]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function utcDay(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Atomically reserves `bytes` of an identity's daily quota. Returns false
+ * (reserving nothing) if this would push the identity's UTC-day total over
+ * `capBytes`. Safe under concurrent callers: the reservation itself happens
+ * in a single conditional UPDATE, so two Durable Objects charging the same
+ * identity at once can't both succeed past the cap.
+ */
+export async function tryConsumeDailyQuota(
+  db: D1Database,
+  identity: string,
+  bytes: number,
+  capBytes: number,
+): Promise<boolean> {
+  const day = utcDay();
+  const now = nowSeconds();
+
+  await db
+    .prepare(
+      "INSERT INTO usage_daily (identity, day, bytes_total, updated_at) VALUES (?1, ?2, 0, ?3) ON CONFLICT (identity, day) DO NOTHING",
+    )
+    .bind(identity, day, now)
+    .run();
+
+  const result = await db
+    .prepare(
+      `UPDATE usage_daily
+       SET bytes_total = bytes_total + ?3, updated_at = ?4
+       WHERE identity = ?1 AND day = ?2 AND bytes_total + ?3 <= ?5`,
+    )
+    .bind(identity, day, bytes, now, capBytes)
+    .run();
+
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/** Compensates a reservation made by tryConsumeDailyQuota that must be undone (e.g. the other side of a relay rejected it). */
+export async function refundDailyQuota(db: D1Database, identity: string, bytes: number): Promise<void> {
+  const day = utcDay();
+  await db
+    .prepare(
+      "UPDATE usage_daily SET bytes_total = MAX(0, bytes_total - ?3), updated_at = ?4 WHERE identity = ?1 AND day = ?2",
+    )
+    .bind(identity, day, bytes, nowSeconds())
+    .run();
 }
