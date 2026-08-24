@@ -192,7 +192,11 @@ export async function findActiveAccessTokenByHash(
     .first<AccessTokenRecord>();
 }
 
-export function ttlFromEnv(env: Env, key: "SESSION_TTL_SECONDS" | "NONCE_TTL_SECONDS"): number {
+export function ttlFromEnv(
+  env: Env,
+  key: "SESSION_TTL_SECONDS" | "NONCE_TTL_SECONDS" | "TURN_CREDENTIAL_TTL_SECONDS" | "TURN_CREDENTIAL_MAX_TTL_SECONDS",
+  fallback = 3600,
+): number {
   const value = Number(env[key]);
-  return Number.isFinite(value) && value > 0 ? value : 3600;
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }

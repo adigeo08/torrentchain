@@ -5,11 +5,14 @@ via [spruceid/siwe](https://github.com/spruceid/siwe)) as a service, backed by D
 
 This is the **foundation** of the project:
 
-1. Cloudflare Worker + D1 for storage.
+1. Cloudflare Worker + D1 for storage (live database: `torrentchain-siwe`).
 2. A SIWE authentication API (`/auth/*`) — nonce issuance, message verification, sessions.
 3. An admin surface (`/admin/*`) for registering 3rd-party services and issuing them
    revocable access tokens, plus `/tokens/introspect` for those services to validate a token.
    Admin secrets live in Cloudflare (`wrangler secret put`), never in the database or repo.
+4. A working example of that pattern end-to-end: `POST /turn/credentials` lets any
+   SIWE-authenticated user request short-lived [Cloudflare Realtime TURN](https://developers.cloudflare.com/realtime/turn/)
+   credentials, using an admin-held TURN key secret.
 
 ## Project layout
 
@@ -28,11 +31,16 @@ src/
     auth.ts                 /auth/nonce, /auth/verify, /auth/session, /auth/logout
     admin.ts                 /admin/services, /admin/tokens
     tokens.ts                /tokens/introspect
+    turn.ts                  /turn/credentials (Cloudflare Realtime TURN)
 migrations/
   0001_init.sql            D1 schema: nonces, users, sessions, admins, services, access_tokens
+  0002_seed_turn_service.sql   seeds the built-in "cloudflare-turn" service row
 ```
 
 ## Setup
+
+The D1 database (`torrentchain-siwe`, id in `wrangler.toml`) already exists in the
+Cloudflare account. To provision from scratch elsewhere:
 
 ```bash
 npm install
@@ -51,6 +59,11 @@ cp .dev.vars.example .dev.vars
 # Production secrets
 npx wrangler secret put ADMIN_API_KEY
 npx wrangler secret put SESSION_JWT_SECRET
+
+# Cloudflare Realtime TURN: Dashboard > Realtime > TURN > Create TURN key,
+# then set the two secrets it gives you:
+npx wrangler secret put TURN_KEY_ID
+npx wrangler secret put TURN_KEY_API_TOKEN
 ```
 
 Also update `SIWE_DOMAIN` / `SIWE_URI` in `wrangler.toml` `[vars]` to match where this API
@@ -88,6 +101,16 @@ npm run deploy    # wrangler deploy
 ### Tokens (public — for 3rd-party services holding a token)
 
 - `POST /tokens/introspect` `{ token }` → `{ active, serviceId?, subject?, scopes?, expiresAt? }`.
+
+### TURN (bearer session token — any authenticated user)
+
+- `POST /turn/credentials` `{ ttl? }` → `{ iceServers: { urls, username, credential }, ttl, expiresAt }`.
+  Calls Cloudflare's Realtime TURN API (`rtc.live.cloudflare.com`) using the `TURN_KEY_ID` /
+  `TURN_KEY_API_TOKEN` secrets, tagging the credential with the caller's address as its
+  `customIdentifier` for Cloudflare-side analytics/abuse monitoring. `ttl` is clamped to
+  `TURN_CREDENTIAL_MAX_TTL_SECONDS` (default 24h); the credential itself expires and is
+  invalidated by Cloudflare, not by this API. Each issuance is logged (hash only) in
+  `access_tokens` under the built-in `svc_cloudflare_turn` service for audit purposes.
 
 ## Notes
 
