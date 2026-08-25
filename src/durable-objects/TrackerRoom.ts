@@ -1,11 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../types";
 import { verifySessionToken } from "../lib/jwt";
-import { isSessionActive, tryConsumeDailyQuota, refundDailyQuota } from "../lib/db";
+import { isSessionActive, tryConsumeDailyQuota, refundDailyQuota, numericEnv } from "../lib/db";
 import { computeIdentity } from "../lib/identity";
 
-const MAX_MESSAGE_BYTES = 64 * 1024; // 64 KB per relayed JSON message / static .html
-const MAX_DAILY_BYTES = 64 * 1024 * 1024; // 64 MB sent+received per identity per UTC day
+// Defaults if unset in wrangler.toml [vars]; both are configurable per-env,
+// see MAX_MESSAGE_BYTES / MAX_DAILY_BYTES.
+const DEFAULT_MAX_MESSAGE_BYTES = 64 * 1024; // 64 KB per relayed JSON message / static .html
+const DEFAULT_MAX_DAILY_BYTES = 64 * 1024 * 1024; // 64 MB sent+received per identity per UTC day
 
 interface PeerAttachment {
   peerId: string;
@@ -146,9 +148,10 @@ export class TrackerRoom extends DurableObject<Env> {
       return;
     }
 
+    const maxMessageBytes = numericEnv(this.env, "MAX_MESSAGE_BYTES", DEFAULT_MAX_MESSAGE_BYTES);
     const byteLength = new TextEncoder().encode(payload).length;
-    if (byteLength > MAX_MESSAGE_BYTES) {
-      this.sendError(ws, `Payload exceeds ${MAX_MESSAGE_BYTES} bytes`);
+    if (byteLength > maxMessageBytes) {
+      this.sendError(ws, `Payload exceeds ${maxMessageBytes} bytes`);
       return;
     }
 
@@ -164,16 +167,17 @@ export class TrackerRoom extends DurableObject<Env> {
     }
     const targetAttachment = target.deserializeAttachment() as PeerAttachment;
 
+    const maxDailyBytes = numericEnv(this.env, "MAX_DAILY_BYTES", DEFAULT_MAX_DAILY_BYTES);
     const db = this.env.DB;
-    const senderOk = await tryConsumeDailyQuota(db, attachment.identity, byteLength, MAX_DAILY_BYTES);
+    const senderOk = await tryConsumeDailyQuota(db, attachment.identity, byteLength, maxDailyBytes);
     if (!senderOk) {
-      this.sendError(ws, "Your daily 64MB quota is exhausted");
+      this.sendError(ws, "Your daily quota is exhausted");
       return;
     }
-    const receiverOk = await tryConsumeDailyQuota(db, targetAttachment.identity, byteLength, MAX_DAILY_BYTES);
+    const receiverOk = await tryConsumeDailyQuota(db, targetAttachment.identity, byteLength, maxDailyBytes);
     if (!receiverOk) {
       await refundDailyQuota(db, attachment.identity, byteLength);
-      this.sendError(ws, "Recipient's daily 64MB quota is exhausted");
+      this.sendError(ws, "Recipient's daily quota is exhausted");
       return;
     }
 

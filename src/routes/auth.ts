@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { generateNonce, SiweMessage } from "siwe";
 import type { Env } from "../types";
-import { saveNonce, consumeNonce, upsertUser, createSession, revokeSession, ttlFromEnv } from "../lib/db";
+import { saveNonce, consumeNonce, upsertUser, createSession, revokeSession, numericEnv } from "../lib/db";
 import { generateId } from "../lib/crypto";
 import { signSessionToken } from "../lib/jwt";
 import { sessionAuth, type SessionVariables } from "../middleware/sessionAuth";
@@ -11,7 +11,7 @@ export const authRoutes = new Hono<{ Bindings: Env; Variables: SessionVariables 
 // GET /auth/nonce - issue a single-use nonce for the client to embed in its SIWE message.
 authRoutes.get("/nonce", async (c) => {
   const nonce = generateNonce();
-  await saveNonce(c.env.DB, nonce, ttlFromEnv(c.env, "NONCE_TTL_SECONDS"));
+  await saveNonce(c.env.DB, nonce, numericEnv(c.env, "NONCE_TTL_SECONDS", 300));
   return c.text(nonce);
 });
 
@@ -55,7 +55,7 @@ authRoutes.post("/verify", async (c) => {
   await upsertUser(c.env.DB, address, siweMessage.chainId);
 
   const sessionId = generateId();
-  const ttl = ttlFromEnv(c.env, "SESSION_TTL_SECONDS");
+  const ttl = numericEnv(c.env, "SESSION_TTL_SECONDS", 3600);
   const { expiresAt } = await createSession(c.env.DB, sessionId, address, siweMessage.chainId, ttl);
 
   const token = await signSessionToken(

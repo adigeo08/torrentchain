@@ -9,6 +9,8 @@ export interface Env {
   SIWE_URI: string;
   SESSION_TTL_SECONDS: string;
   NONCE_TTL_SECONDS: string;
+  MAX_MESSAGE_BYTES: string;
+  MAX_DAILY_BYTES: string;
 
   // Secrets (set with `wrangler secret put <NAME>`)
   ADMIN_API_KEY: string;

@@ -144,19 +144,21 @@ Once connected, send/receive JSON text frames:
   `{ "action": "relay", "from_peer_id", "payload_type", "payload" }`.
 
 Two limits are enforced directly in the Durable Object, synchronously, before any byte
-is forwarded — no reliance on delayed analytics:
+is forwarded — no reliance on delayed analytics. Both are configurable via
+`wrangler.toml` `[vars]` (`MAX_MESSAGE_BYTES`, `MAX_DAILY_BYTES`), no code change needed;
+defaults below (64KB / 64MB, i.e. ~1024 max-size payloads/day per identity):
 
-- **64KB per session**: each WebSocket connection may send **at most one** `relay`
-  message (one JSON message or one static `.html` file), and its `payload` must be
-  ≤ 65536 bytes. A second `relay` attempt on the same connection is rejected; open a
-  new connection (new session) to send again.
-- **64MB per identity per UTC day**: every relayed payload's byte length is charged to
-  *both* the sender's and the receiver's daily total (`usage_daily` table, keyed by
-  identity + day) — this is what "send and receive" both count against. The charge
-  happens via an atomic conditional `UPDATE ... WHERE bytes_total + ? <= cap`, so it's
-  race-free even across swarms/Durable Object instances; if the recipient's quota is
-  the one that's exhausted, the sender's reservation is refunded and the relay is
-  refused.
+- **`MAX_MESSAGE_BYTES` per session** (default 65536 = 64KB): each WebSocket connection
+  may send **at most one** `relay` message (one JSON message or one static `.html`
+  file), and its `payload` must be ≤ this many bytes. A second `relay` attempt on the
+  same connection is rejected; open a new connection (new session) to send again.
+- **`MAX_DAILY_BYTES` per identity per UTC day** (default 67108864 = 64MB): every relayed
+  payload's byte length is charged to *both* the sender's and the receiver's daily total
+  (`usage_daily` table, keyed by identity + day) — this is what "send and receive" both
+  count against. The charge happens via an atomic conditional
+  `UPDATE ... WHERE bytes_total + ? <= cap`, so it's race-free even across swarms/Durable
+  Object instances; if the recipient's quota is the one that's exhausted, the sender's
+  reservation is refunded and the relay is refused.
 
 ## Notes
 
