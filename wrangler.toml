@@ -1,0 +1,27 @@
+name = "torrentchain-siwe-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Non-secret configuration. Real secrets (ADMIN_API_KEY, SESSION_JWT_SECRET,
+# ACCESS_TOKEN_JWT_SECRET, ...) must be set with `wrangler secret put <NAME>`
+# and never committed here.
+[vars]
+SIWE_DOMAIN = "example.com"
+SIWE_URI = "https://example.com"
+SESSION_TTL_SECONDS = "3600"
+NONCE_TTL_SECONDS = "300"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "torrentchain-siwe"
+database_id = "fa53263e-79a2-43a3-b912-4210f2e4a1fb"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "TRACKER_ROOM"
+class_name = "TrackerRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TrackerRoom"]

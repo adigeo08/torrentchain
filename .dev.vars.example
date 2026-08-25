@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local `wrangler dev` (never commit the real file).
+# In production these are set with `wrangler secret put <NAME>`.
+
+ADMIN_API_KEY=change-me-admin-key
+SESSION_JWT_SECRET=change-me-session-secret-min-32-chars

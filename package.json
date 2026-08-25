@@ -1,0 +1,25 @@
+{
+  "name": "torrentchain-siwe-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SIWE-as-a-Service API running on a Cloudflare Worker with D1 storage.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrations:apply:local": "wrangler d1 migrations apply torrentchain-siwe --local",
+    "db:migrations:apply:remote": "wrangler d1 migrations apply torrentchain-siwe --remote"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6",
+    "siwe": "^2.3.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.99.0"
+  }
+}
